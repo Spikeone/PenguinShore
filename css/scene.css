@@ -1,0 +1,247 @@
+/* Penguin Shore — everything that moves. */
+
+#scene .penguin .anim,
+#scene .anim {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+
+/* ---------------- idle behaviours ---------------- */
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2.5px); }
+}
+@keyframes waddle {
+  0% { transform: translateX(calc(var(--wx) * -1)) rotate(-3deg); }
+  25% { transform: translateX(calc(var(--wx) * -0.5)) rotate(3deg) translateY(-1.5px); }
+  50% { transform: translateX(var(--wx)) rotate(-3deg); }
+  75% { transform: translateX(calc(var(--wx) * 0.5)) rotate(3deg) translateY(-1.5px); }
+  100% { transform: translateX(calc(var(--wx) * -1)) rotate(-3deg); }
+}
+@keyframes slide {
+  0%, 15% { transform: translateX(calc(var(--wx) * -1.5)) rotate(0deg); }
+  25% { transform: translateX(calc(var(--wx) * -1.2)) rotate(-78deg) translateY(6px); }
+  60% { transform: translateX(calc(var(--wx) * 1.6)) rotate(-78deg) translateY(6px); }
+  72%, 100% { transform: translateX(calc(var(--wx) * 1.6)) rotate(0deg); }
+}
+@keyframes arrive {
+  0% { transform: translateY(-14px) scale(0.2); opacity: 0; }
+  60% { transform: translateY(0) scale(1.1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes cheer {
+  0%, 100% { transform: translateY(0) scale(1); }
+  40% { transform: translateY(-9px) scale(1.06, 0.96); }
+  70% { transform: translateY(0) scale(0.96, 1.04); }
+}
+@keyframes dive {
+  0% { transform: translateY(0) rotate(0); }
+  35% { transform: translateY(10px) rotate(28deg) scale(0.92); }
+  65% { transform: translateY(12px) rotate(30deg) scale(0.9); }
+  100% { transform: translateY(0) rotate(0); }
+}
+
+#scene .anim.bob { animation: bob 1.7s ease-in-out infinite; animation-delay: calc(var(--seed) * -1.7s); }
+#scene .anim.waddle { animation: waddle 7s ease-in-out infinite; animation-delay: calc(var(--seed) * -7s); }
+#scene .anim.slide { animation: slide 9s ease-in-out infinite; animation-delay: calc(var(--seed) * -9s); }
+#scene .anim.flip > use:first-child { transform: scaleX(-1); transform-box: fill-box; transform-origin: center; }
+#scene .anim.cheer { animation: cheer 0.7s cubic-bezier(0.3, 1.3, 0.5, 1) 1; }
+#scene .hero-anim.dive { animation: dive 0.5s ease-out 1; }
+
+#scene .penguin.arrive, #scene .bslot.arrive {
+  animation: arrive 0.5s cubic-bezier(0.3, 1.4, 0.5, 1) 1;
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+
+/* ---------------- water ---------------- */
+@keyframes wave {
+  from { transform: translateX(0); }
+  to { transform: translateX(40px); }
+}
+#scene .wave { animation: wave 4s linear infinite; }
+#scene .wave.w2 { animation-duration: 5.5s; animation-direction: reverse; }
+#scene .wave.w3 { animation-duration: 7s; }
+
+/* ---------------- sky ---------------- */
+@keyframes twinkle {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+#scene .star { animation: twinkle 3s ease-in-out infinite; animation-delay: var(--d); }
+
+@keyframes ribbon {
+  0%, 100% { transform: translateY(0); opacity: 0.3; }
+  50% { transform: translateY(-8px); opacity: 0.5; }
+}
+#scene .ribbon { animation: ribbon 6s ease-in-out infinite; }
+#scene .ribbon.r2 { animation-delay: -3s; animation-duration: 8s; }
+
+#scene #sun circle:first-child { transition: fill 1s linear; }
+#scene #sun.moon circle:first-child { fill: #f4f1d8 !important; }
+
+@keyframes fall {
+  0% { transform: translate(0, -10px); opacity: 0; }
+  10% { opacity: 0.9; }
+  100% { transform: translate(var(--x), 230px); opacity: 0; }
+}
+#scene .flake { opacity: 0; }
+#scene[data-weather="snow"] .flake,
+#scene[data-weather="petals"] .flake {
+  animation: fall var(--t) linear infinite;
+  animation-delay: calc(var(--d) * -1);
+}
+#scene[data-weather="petals"] .flake { fill: #f7a8c4; }
+
+/* ---------------- buildings ---------------- */
+@keyframes ripple {
+  0% { transform: scale(0.6); opacity: 0.7; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+#scene .ripple { transform-box: fill-box; transform-origin: center; animation: ripple 2.4s ease-out infinite; }
+
+@keyframes steam {
+  0% { transform: translateY(0) scale(0.8); opacity: 0.5; }
+  100% { transform: translateY(-18px) scale(1.3); opacity: 0; }
+}
+#scene .steam { transform-box: fill-box; transform-origin: center; animation: steam 3s ease-out infinite; }
+#scene .steam.s2 { animation-delay: -1s; }
+#scene .steam.s3 { animation-delay: -2s; }
+#scene .smoke { animation: steam 4s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+
+#scene .window-glow, #scene .beam { transition: opacity 1.5s; }
+#scene.night .window-glow { opacity: 0.9 !important; }
+#scene.night .beam { opacity: 0.35 !important; }
+#scene .lamp { transition: fill 1s; }
+#scene.night .lamp { fill: #fff2b3; }
+@keyframes beam {
+  0%, 100% { transform: rotate(-6deg); }
+  50% { transform: rotate(6deg); }
+}
+#scene.night .beam { transform-box: fill-box; transform-origin: 0 50%; animation: beam 6s ease-in-out infinite; }
+
+/* ---------------- events ---------------- */
+@keyframes drift {
+  0% { transform: translateX(-12px); }
+  50% { transform: translateX(12px); }
+  100% { transform: translateX(-12px); }
+}
+@keyframes wiggle {
+  0%, 100% { transform: rotate(-6deg); }
+  50% { transform: rotate(6deg); }
+}
+@keyframes rise {
+  0% { transform: translateY(0); opacity: 0.7; }
+  100% { transform: translateY(-16px); opacity: 0; }
+}
+@keyframes wobble {
+  0%, 100% { transform: rotate(0); }
+  20% { transform: rotate(-10deg); }
+  40% { transform: rotate(9deg); }
+  60% { transform: rotate(-6deg); }
+  80% { transform: rotate(4deg); }
+}
+@keyframes pop-in {
+  0% { transform: scale(0); opacity: 0; }
+  70% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes streak {
+  0% { transform: translate(90px, -40px); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: translate(-60px, 30px); opacity: 0; }
+}
+@keyframes wave-flipper {
+  0%, 100% { transform: rotate(0); }
+  50% { transform: rotate(-30deg); }
+}
+@keyframes spout {
+  0% { transform: scaleY(0.4); opacity: 0; }
+  40% { transform: scaleY(1); opacity: 0.9; }
+  100% { transform: scaleY(1.2); opacity: 0; }
+}
+@keyframes breach {
+  0% { transform: translateY(40px); }
+  30% { transform: translateY(-6px); }
+  60% { transform: translateY(0); }
+  100% { transform: translateY(0); }
+}
+
+#scene .event-wrap { animation: pop-in 0.4s cubic-bezier(0.3, 1.4, 0.5, 1) 1; transform-box: fill-box; transform-origin: center; }
+#scene .ev-swarm { animation: drift 4s ease-in-out infinite; }
+#scene .swarm-fish { transform-box: fill-box; transform-origin: center; animation: wiggle 0.6s ease-in-out infinite; }
+#scene .swarm-fish.f1 { animation-delay: -0.2s; }
+#scene .swarm-fish.f2 { animation-delay: -0.4s; }
+#scene .bubble { animation: rise 1.6s ease-out infinite; }
+#scene .bubble.b2 { animation-delay: -0.8s; }
+#scene .egg { transform-box: fill-box; transform-origin: 50% 100%; animation: wobble 1.6s ease-in-out infinite; }
+#scene .ev-star { animation: streak 3.5s ease-out infinite; }
+#scene .wave-flipper { transform-box: fill-box; transform-origin: 50% 100%; animation: wave-flipper 0.9s ease-in-out infinite; }
+#scene .ev-gift { animation: drift 5s ease-in-out infinite; }
+#scene .ev-whale { animation: breach 6s ease-out 1 forwards; }
+#scene .spout { transform-box: fill-box; transform-origin: 50% 100%; animation: spout 2.2s ease-out infinite; }
+
+/* ---------------- tap effects ---------------- */
+@keyframes splash {
+  0% { transform: scale(0.4); opacity: 0.9; }
+  100% { transform: scale(3); opacity: 0; }
+}
+#scene .splash { transform-box: fill-box; transform-origin: center; animation: splash 0.55s ease-out forwards; }
+
+@keyframes fish-fly {
+  0% { transform: translate(0, 0) rotate(-20deg) scale(0.6); opacity: 1; }
+  50% { transform: translate(calc(var(--dx) * 0.5), calc(var(--dy) * 0.5 - 36px)) rotate(10deg) scale(1.1); opacity: 1; }
+  85% { transform: translate(var(--dx), var(--dy)) rotate(30deg) scale(1); opacity: 1; }
+  100% { transform: translate(var(--dx), calc(var(--dy) - 6px)) rotate(30deg) scale(0.4); opacity: 0; }
+}
+#scene .fish-fly { animation: fish-fly 0.62s cubic-bezier(0.3, 0.6, 0.5, 1) forwards; }
+#scene .fish-fly.gold { animation-duration: 0.8s; }
+
+@keyframes float-num {
+  0% { transform: translate(-50%, 0) scale(0.7); opacity: 0; }
+  15% { transform: translate(-50%, -8px) scale(1.1); opacity: 1; }
+  100% { transform: translate(-50%, -46px) scale(1); opacity: 0; }
+}
+.float-num {
+  position: absolute;
+  font-weight: 800;
+  font-size: 1rem;
+  color: #26344a;
+  text-shadow: 0 1px 0 #fff, 0 0 6px rgba(255, 255, 255, 0.9);
+  animation: float-num 0.9s ease-out forwards;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.float-num.gold { color: #b4851a; font-size: 1.25rem; }
+.float-num.big { color: #2b6fae; font-size: 1.3rem; animation-duration: 1.3s; }
+
+/* ---------------- reduced motion ---------------- */
+#app.reduce #scene .anim.bob,
+#app.reduce #scene .anim.waddle,
+#app.reduce #scene .anim.slide,
+#app.reduce #scene .wave,
+#app.reduce #scene .star,
+#app.reduce #scene .ribbon,
+#app.reduce #scene .flake,
+#app.reduce #scene .ripple,
+#app.reduce #scene .steam,
+#app.reduce #scene .smoke,
+#app.reduce #scene .beam,
+#app.reduce #scene .ev-swarm,
+#app.reduce #scene .swarm-fish,
+#app.reduce #scene .bubble,
+#app.reduce #scene .egg,
+#app.reduce #scene .ev-star,
+#app.reduce #scene .wave-flipper,
+#app.reduce #scene .ev-gift,
+#app.reduce #scene .spout,
+#app.reduce #scene .anim.cheer,
+#app.reduce #scene .penguin.arrive,
+#app.reduce #scene .bslot.arrive {
+  animation: none;
+}
+#app.reduce #scene .flake { opacity: 0; }
+#app.reduce #scene .ev-star { opacity: 1; }
+#app.reduce #scene .fish-fly { animation-duration: 0.3s; }
+#app.reduce .float-num { animation-duration: 0.6s; }
+#app.reduce #scene .anim.flip > use:first-child { transform: scaleX(-1); }

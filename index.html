@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Penguin Shore</title>
+  <meta name="description" content="Penguin Shore — a cozy penguin colony that grows with every tap.">
+  <meta name="theme-color" content="#bfe3f7">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Penguin Shore">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/scene.css">
+</head>
+<body>
+  <div id="app">
+    <!-- ================= HUD ================= -->
+    <header id="hud">
+      <div id="hud-fish">
+        <div class="fish-row">
+          <svg class="fish-icon" viewBox="-14 -7 28 14" aria-hidden="true"><use href="#fish"/></svg>
+          <span id="fish-count">0</span>
+        </div>
+        <div class="rate-row">
+          <span id="fish-rate">+0/s</span>
+          <span id="combo" class="hidden"><span id="combo-text"></span><span class="combo-bar"><span id="combo-fill"></span></span></span>
+        </div>
+      </div>
+      <div id="hud-right">
+        <button id="pearl-pill" class="pill hidden" aria-label="Pearls"><span class="pearl-dot"></span><span id="pearl-count">0</span></button>
+        <button class="icon-btn" id="btn-settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.8 7.8 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.9 7.9 0 0 0-1.7-1L15 3.3H9l-.4 2.6a7.9 7.9 0 0 0-1.7 1l-2.5-1-2 3.5L4.6 11a7.8 7.8 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.9 7.9 0 0 0 1.7 1l.4 2.6h6l.4-2.6a7.9 7.9 0 0 0 1.7-1l2.5 1 2-3.5zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- ================= scene ================= -->
+    <div id="scene-wrap">
+      <svg id="scene" preserveAspectRatio="xMidYMax slice" aria-label="The shore"></svg>
+      <div id="fx-layer" aria-hidden="true"></div>
+      <div id="boost-pills" aria-live="polite"></div>
+      <div id="banner" class="hidden" aria-live="polite"></div>
+      <div id="hint" class="hidden"></div>
+    </div>
+
+    <!-- ================= shop ================= -->
+    <div id="panel">
+      <nav class="tabs" aria-label="Shop">
+        <button class="tab active" data-tab="colony">Colony</button>
+        <button class="tab" data-tab="buildings">Buildings</button>
+        <button class="tab" data-tab="pearls">Pearls</button>
+        <div class="buyqty" aria-label="Quantity">
+          <button class="qty active" data-qty="1">×1</button>
+          <button class="qty" data-qty="10">×10</button>
+          <button class="qty" data-qty="max">Max</button>
+        </div>
+      </nav>
+      <div id="shop"></div>
+    </div>
+
+    <!-- ================= overlays ================= -->
+    <div class="overlay hidden" id="overlay-settings">
+      <div class="card">
+        <h2>Settings</h2>
+        <label class="setting-row"><span>Mute</span><input type="checkbox" id="set-muted"></label>
+        <label class="setting-row"><span>Effects</span><input type="range" id="set-sfx" min="0" max="1" step="0.05"></label>
+        <label class="setting-row"><span>Music</span><input type="range" id="set-music" min="0" max="1" step="0.05"></label>
+        <label class="setting-row"><span>Reduce motion</span><input type="checkbox" id="set-reduce"></label>
+
+        <h3>Colony</h3>
+        <div class="stat-grid" id="stats-grid"></div>
+
+        <h3>Milestones <span id="milestone-count" class="count"></span></h3>
+        <div id="milestone-list"></div>
+
+        <h3>Start over</h3>
+        <label class="setting-row small"><span>Also forget Pearls and upgrades</span><input type="checkbox" id="set-reset-pearls"></label>
+        <button class="big-btn danger" id="btn-reset">Start over</button>
+
+        <p class="hint-line"><span id="version"></span></p>
+        <button class="big-btn" data-close="overlay-settings">Back</button>
+      </div>
+    </div>
+
+    <div class="overlay hidden" id="overlay-migrate">
+      <div class="card">
+        <h2 id="migrate-title">Leave this shore?</h2>
+        <svg class="migrate-art" viewBox="-80 -70 160 80" aria-hidden="true">
+          <g transform="translate(-30 0) scale(0.9)"><use href="#sp-adelie"/></g>
+          <g transform="translate(0 0)"><use href="#sp-gentoo"/></g>
+          <g transform="translate(32 0) scale(0.9)"><use href="#sp-rockhopper"/></g>
+        </svg>
+        <p id="migrate-desc" class="desc"></p>
+        <button class="big-btn primary" id="btn-migrate-go">Set off</button>
+        <button class="big-btn" data-close="overlay-migrate">Not yet</button>
+      </div>
+    </div>
+
+    <div id="toast" class="hidden"></div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

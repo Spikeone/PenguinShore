@@ -1,0 +1,20 @@
+"""Static dev server with caching disabled — python http.server sends no
+Cache-Control, so browsers heuristically cache JS/CSS and serve mixed stale
+versions during development."""
+import functools
+import http.server
+import os
+
+
+class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header('Cache-Control', 'no-store')
+        super().end_headers()
+
+
+if __name__ == '__main__':
+    root = os.path.dirname(os.path.abspath(__file__))
+    http.server.test(
+        HandlerClass=functools.partial(NoCacheHandler, directory=root),
+        port=8082,
+    )

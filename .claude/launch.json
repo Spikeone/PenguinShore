@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "penguinshore-static",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["E:/claude-webapps/claude-penguin-shore/serve.py"],
+      "port": 8082
+    }
+  ]
+}
