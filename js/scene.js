@@ -4,7 +4,7 @@
 
 import {
   SPECIES_ORDER, ITEMS, ITEM_BY_ID, SLOTS, depthScale, HERO, ELDER, VIEW_W, VIEW_H,
-  biomeAt, EVENT_BY_ID,
+  biomeAt, EVENT_BY_ID, masteryTier,
 } from './config.js';
 import {
   allPenguinSymbols, allAccessorySymbols, fishSymbols, buildingSvg, tierFor, eventSvg,
@@ -74,6 +74,15 @@ const FAR_SHAPES = {
     + '<path d="M50 176 L62 190 L38 190 Z M140 168 L154 186 L126 186 Z M244 180 L256 194 L232 194 Z" fill="#ffffff" opacity="0.5"/>',
   sunriseLagoon: '<path d="M0 226 Q60 196 120 222 Q180 200 240 224 Q300 198 360 226 L360 240 L0 240 Z" style="fill:var(--c-far)"/>'
     + '<path d="M70 222 L74 196 L82 200 L78 222 Z M300 224 L304 198 L312 202 L308 224 Z" fill="#7bb661" opacity="0.6"/>',
+  volcanicIsle: '<path d="M0 226 L60 214 L120 150 L150 168 L180 158 L240 216 L300 212 L360 226 L360 240 L0 240 Z" style="fill:var(--c-far)"/>'
+    + '<path d="M120 150 L150 168 L180 158 L172 172 L126 172 Z" fill="#2b1b2e" opacity="0.5"/>'
+    + '<circle class="smoke" cx="150" cy="150" r="7" fill="#ffffff" opacity="0.5"/>',
+  driftIce: '<path d="M0 228 L40 220 L70 226 L120 216 L160 224 L210 214 L250 222 L300 212 L340 222 L360 220 L360 240 L0 240 Z" style="fill:var(--c-far)"/>'
+    + '<path d="M120 216 L160 224 L120 224 Z M250 222 L300 212 L300 224 Z" fill="#ffffff" opacity="0.5"/>',
+  kelpBay: '<path d="M0 224 Q50 200 100 220 Q160 196 220 218 Q280 198 360 222 L360 240 L0 240 Z" style="fill:var(--c-far)"/>'
+    + '<path d="M40 222 Q46 206 40 196 M48 224 Q56 210 50 200 M310 222 Q316 206 310 196 M320 224 Q326 212 320 202" fill="none" stroke="#3f9c8a" stroke-width="2" opacity="0.7"/>',
+  crystalCove: '<path d="M0 226 L40 190 L70 222 L110 176 L150 222 L200 184 L240 222 L280 170 L320 222 L360 200 L360 240 L0 240 Z" style="fill:var(--c-far)"/>'
+    + '<path d="M110 176 L130 200 L90 200 Z M280 170 L300 198 L260 198 Z" fill="#ffffff" opacity="0.45"/>',
 };
 
 function buildSky() {
@@ -241,22 +250,29 @@ function behaviourFor(key) {
   return 'slide';
 }
 
-function addPenguin(key, species, fresh) {
+function addPenguin(key, species, fresh, golden) {
   const idx = freeSlot();
   slotTaken.set(key, idx);
   const slot = SLOTS[idx];
   const h = hashKey(key + 'x');
   const s = depthScale(slot.y);
   const g = el('g', {
-    class: 'penguin' + (fresh ? ' arrive' : ''),
+    class: 'penguin' + (fresh ? ' arrive' : '') + (golden ? ' golden' : ''),
     'data-key': key,
     transform: 'translate(' + slot.x + ' ' + slot.y + ') scale(' + s.toFixed(3) + ')',
   });
   const flip = h > 0.5 ? ' flip' : '';
   g.innerHTML = '<g class="anim ' + behaviourFor(key) + flip + '" style="--seed:' + h.toFixed(3) + ';--wx:' + (8 + h * 12).toFixed(0) + 'px">'
-    + '<use href="#sp-' + species + '"/><use class="acc" href="" style="display:none"/></g>';
+    + '<use class="bird" href="#sp-' + species + (golden ? '-gold' : '') + '"/><use class="acc" href="" style="display:none"/></g>';
   rowFor(slot.y).appendChild(g);
-  penguinNodes.set(key, { g, acc: g.querySelector('.acc'), species });
+  penguinNodes.set(key, { g, acc: g.querySelector('.acc'), bird: g.querySelector('.bird'), species, golden: !!golden });
+}
+
+function setGolden(node, golden) {
+  if (node.golden === golden) return;
+  node.golden = golden;
+  node.bird.setAttribute('href', '#sp-' + node.species + (golden ? '-gold' : ''));
+  node.g.classList.toggle('golden', golden);
 }
 
 function removePenguin(key) {
@@ -282,10 +298,15 @@ function syncPenguins(state, announce) {
   const wanted = new Set();
   for (const sp of SPECIES_ORDER) {
     const n = counts[sp] || 0;
+    const item = ITEMS.find((it) => it.species === sp);
+    const goldenN = item && state.lucky ? (state.lucky[item.id] || 0) : 0;
     for (let i = 0; i < n; i++) {
       const key = sp + '#' + i;
       wanted.add(key);
-      if (!penguinNodes.has(key)) addPenguin(key, sp, announce);
+      // the lucky ones stand at the front of their species
+      const golden = i < goldenN;
+      if (!penguinNodes.has(key)) addPenguin(key, sp, announce, golden);
+      else setGolden(penguinNodes.get(key), golden);
       setAccessory(penguinNodes.get(key), state.cosmetics[key] || null);
     }
   }
@@ -299,7 +320,8 @@ function syncPenguins(state, announce) {
     const item = ITEMS.find((it) => it.species === sp);
     const owned = state.items[item.id] || 0;
     const shown = counts[sp] || 0;
-    if (owned > shown && shown > 0) {
+    const tier = masteryTier(owned);
+    if (shown > 0 && (owned > shown || tier > 0)) {
       let best = null;
       for (let i = 0; i < shown; i++) {
         const node = penguinNodes.get(sp + '#' + i);
@@ -307,9 +329,14 @@ function syncPenguins(state, announce) {
         if (node && (!best || slot.y > best.slot.y)) best = { node, slot };
       }
       if (best) {
-        const b = el('g', { class: 'badge', transform: 'translate(' + best.slot.x + ' ' + (best.slot.y - 58 * depthScale(best.slot.y)) + ')' });
-        const text = '×' + (owned - shown);
-        b.innerHTML = '<rect x="-14" y="-8" width="28" height="13" rx="6.5" fill="#26344a" opacity="0.75"/>'
+        // mastery stars and the number not shown ("★2 ×27")
+        const parts = [];
+        if (tier > 0) parts.push('★' + tier);
+        if (owned > shown) parts.push('×' + (owned - shown));
+        const text = parts.join(' ');
+        const w = 10 + text.length * 5.2;
+        const b = el('g', { class: 'badge' + (tier > 0 ? ' mastered' : ''), transform: 'translate(' + best.slot.x + ' ' + (best.slot.y - 58 * depthScale(best.slot.y)) + ')' });
+        b.innerHTML = '<rect x="' + (-w / 2) + '" y="-8" width="' + w + '" height="13" rx="6.5" fill="' + (tier > 0 ? '#b4851a' : '#26344a') + '" opacity="0.8"/>'
           + '<text x="0" y="2" text-anchor="middle" font-size="8.5" fill="#ffffff" font-family="system-ui, sans-serif" font-weight="600">' + text + '</text>';
         layers.extras.appendChild(b);
       }

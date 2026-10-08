@@ -127,6 +127,17 @@ function dispatch(events) {
         audio.playSfx('unlock');
         shopDirty = true;
         break;
+      case 'masteryUp':
+        fx.toast({ title: label('masteryUp', { name: speciesName(ev.species), tier: '\u2605'.repeat(ev.tier) }), icon: '<span class="ti">\u2605</span>', kind: 'milestone' });
+        audio.playSfx('unlock');
+        scene.cheer();
+        sceneDirty = true;
+        break;
+      case 'lucky':
+        fx.toast({ title: label('luckyPenguin', { name: speciesName(ev.species) }), icon: '<span class="ti">\u2728</span>', kind: 'milestone' });
+        audio.playSfx('golden');
+        sceneDirty = true;
+        break;
       case 'milestone':
         onMilestone(ev);
         shopDirty = true;
@@ -175,7 +186,7 @@ function dispatch(events) {
         const biome = biomeAt(game.state.biome);
         scene.rebuild(game.state);
         applyPalette(true);
-        fx.banner(label('newBiome', { name: biome.name }), biome.tagline);
+        fx.banner(label('newBiome', { name: ui.biomeTitle(game.state.biome) }), biome.tagline);
         audio.playSfx('migrate');
         shopDirty = true;
         break;
@@ -322,6 +333,12 @@ const callbacks = {
     ui.showOverlay('overlay-settings');
     music.setDucked(true);
   },
+  onOpenCollection() {
+    startAudio();
+    ui.renderCollection(game);
+    ui.showOverlay('overlay-collection');
+    music.setDucked(true);
+  },
   onCloseOverlay() {
     ui.hideOverlays();
     music.setDucked(false);
@@ -362,6 +379,8 @@ const callbacks = {
         game.state.pearlsEarned = old.pearlsEarned;
         game.state.pearlUpgrades = old.pearlUpgrades;
         game.state.unlockedCosmetics = old.unlockedCosmetics;
+        game.state.luckyFound = old.luckyFound;
+        game.state.seen.biomes = old.seen.biomes;
         game.state.migrations = old.migrations;
         game.state.biome = old.biome;
         game.state.seen.milestones = old.seen.milestones;
@@ -445,7 +464,7 @@ function boot() {
         if (target === 'star') game.state.dayMs = DAY_CYCLE_MS * 0.8;
       },
       setDay(f) { game.state.dayMs = f * DAY_CYCLE_MS; applyPalette(true); },
-      migrate() { game.state.lifetimeFish = Math.max(game.state.lifetimeFish, 100000); dispatch(game.migrate()); },
+      migrate() { game.state.lifetimeFish = Math.max(game.state.lifetimeFish, game.migrateGoal()); dispatch(game.migrate()); },
       cheer: () => scene.cheer(),
       buy: (id, qty) => callbacks.onBuy(id, qty || 1),
       buyPearl: (id) => callbacks.onBuyPearl(id),

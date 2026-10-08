@@ -3,17 +3,18 @@
 // 58 tall, so the scene only has to translate and scale it. Pure functions,
 // so the tests can check them from node.
 
-import { SPECIES, COSMETICS } from './config.js';
+import { SPECIES, COSMETICS, GOLDEN_BODY, GOLDEN_BELLY } from './config.js';
 
 const esc = (v) => String(v);
 
 // ---------------------------------------------------------------- penguins
 
-export function penguinSymbol(speciesId) {
+// golden: the lucky variant, same bird in gold.
+export function penguinSymbol(speciesId, golden) {
   const sp = SPECIES[speciesId];
   if (!sp) return '';
-  const body = sp.body;
-  const belly = sp.belly;
+  const body = golden ? GOLDEN_BODY : sp.body;
+  const belly = golden ? GOLDEN_BELLY : sp.belly;
   const eye = sp.eye || '#0b0d12';
   const parts = [];
   // shadow on the ice
@@ -38,8 +39,12 @@ export function penguinSymbol(speciesId) {
     parts.push('<path d="M-11 -44 Q-6 -49 -2 -46 Q0 -45 2 -46 Q6 -49 11 -44 Q6 -45 2 -44 Q0 -43 -2 -44 Q-6 -45 -11 -44 Z" fill="' + sp.cap + '"/>');
   }
   if (sp.earPatch) {
-    parts.push('<ellipse cx="-12" cy="-38" rx="3.5" ry="5" fill="' + sp.earPatch + '" opacity="0.9"/>');
-    parts.push('<ellipse cx="12" cy="-38" rx="3.5" ry="5" fill="' + sp.earPatch + '" opacity="0.9"/>');
+    const r = sp.cheekPatch ? 4.5 : 3.5;
+    parts.push('<ellipse cx="-12" cy="-37" rx="' + r + '" ry="' + (r + 1.5) + '" fill="' + sp.earPatch + '" opacity="0.9"/>');
+    parts.push('<ellipse cx="12" cy="-37" rx="' + r + '" ry="' + (r + 1.5) + '" fill="' + sp.earPatch + '" opacity="0.9"/>');
+  }
+  if (sp.cheekPatch) {
+    parts.push('<path d="M-8 -30 Q0 -26 8 -30 L8 -24 Q0 -20 -8 -24 Z" fill="' + sp.earPatch + '" opacity="0.7"/>');
   }
   // eyes
   const ring = sp.eyeRing || (sp.chinstrap || sp.face ? null : '#ffffff');
@@ -75,11 +80,15 @@ export function penguinSymbol(speciesId) {
   // cheeks
   parts.push('<circle cx="-10" cy="-35" r="2" fill="#ffb3b3" opacity="0.45"/>');
   parts.push('<circle cx="10" cy="-35" r="2" fill="#ffb3b3" opacity="0.45"/>');
-  return '<symbol id="sp-' + esc(speciesId) + '" overflow="visible">' + parts.join('') + '</symbol>';
+  if (golden) {
+    parts.push('<circle cx="-14" cy="-50" r="1.4" fill="#fff6d6" class="sparkle"/>');
+    parts.push('<circle cx="15" cy="-20" r="1.1" fill="#fff6d6" class="sparkle"/>');
+  }
+  return '<symbol id="sp-' + esc(speciesId) + (golden ? '-gold' : '') + '" overflow="visible">' + parts.join('') + '</symbol>';
 }
 
 export function allPenguinSymbols() {
-  return Object.keys(SPECIES).map(penguinSymbol).join('');
+  return Object.keys(SPECIES).map((id) => penguinSymbol(id) + (id === 'chick' ? '' : penguinSymbol(id, true))).join('');
 }
 
 // ---------------------------------------------------------------- accessories
@@ -177,6 +186,47 @@ const BUILDING_ART = {
     + '<ellipse class="steam s2" cx="6" cy="-12" rx="4.5" ry="7" fill="#ffffff" opacity="0.5"/>'
     + (t >= 2 ? '<ellipse cx="-20" cy="-4" rx="4" ry="3" fill="#9aa3ad"/><ellipse cx="19" cy="-3" rx="4" ry="3" fill="#9aa3ad"/>' : '')
     + (t >= 3 ? '<ellipse class="steam s3" cx="-1" cy="-14" rx="4" ry="6" fill="#ffffff" opacity="0.5"/>' : ''),
+  tidePools: (t) => '<path d="M-26 2 Q-20 -10 0 -8 Q22 -10 26 2 Z" fill="#8a94a6"/>'
+    + '<ellipse cx="-10" cy="-2" rx="8" ry="3.5" style="fill:var(--c-water)"/><ellipse cx="9" cy="-3" rx="7" ry="3" style="fill:var(--c-water)"/>'
+    + '<ellipse cx="-10" cy="-3" rx="4" ry="1.4" fill="#ffffff" opacity="0.4"/>'
+    + '<path d="M8 -4 l1.2 2.4 2.6 0.4 -1.9 1.8 0.5 2.6 -2.4 -1.2 -2.4 1.2 0.5 -2.6 -1.9 -1.8 2.6 -0.4 Z" fill="#f28ab2" transform="translate(0 -1) scale(0.9)"/>'
+    + (t >= 2 ? '<ellipse cx="0" cy="3" rx="5" ry="2" style="fill:var(--c-water)"/><circle cx="-18" cy="0" r="1.6" fill="#7bb661"/>' : '')
+    + (t >= 3 ? '<circle cx="18" cy="1" r="2" fill="#f2c94c"/><circle cx="-2" cy="-6" r="1.4" fill="#f28ab2"/>' : ''),
+  lanternDock: (t) => '<path d="M-6 0 L-6 -6 L30 -14 L30 -8 L-6 0 Z" fill="#a9744f"/>'
+    + '<path d="M-6 -6 L30 -14 L30 -16 L-6 -8 Z" fill="#c48a5e"/>'
+    + '<rect x="0" y="-26" width="2.5" height="20" fill="#8c6a4a"/><rect x="22" y="-32" width="2.5" height="20" fill="#8c6a4a"/>'
+    + '<rect x="-2.5" y="-32" width="7.5" height="7" rx="1.5" fill="#3b3f73"/><rect x="-1.5" y="-31" width="5.5" height="5" class="window-glow" fill="#ffd27a" opacity="0.5"/>'
+    + '<rect x="19.5" y="-38" width="7.5" height="7" rx="1.5" fill="#3b3f73"/><rect x="20.5" y="-37" width="5.5" height="5" class="window-glow" fill="#ffd27a" opacity="0.5"/>'
+    + (t >= 2 ? '<ellipse cx="36" cy="-12" rx="6" ry="2.5" fill="#a9744f"/>' : '')
+    + (t >= 3 ? '<rect x="10" y="-26" width="2.5" height="14" fill="#8c6a4a"/><rect x="8" y="-32" width="7" height="6" rx="1.5" fill="#3b3f73"/><rect x="9" y="-31" width="5" height="4" class="window-glow" fill="#ffd27a" opacity="0.5"/>' : ''),
+  hotVents: (t) => '<ellipse cx="0" cy="2" rx="26" ry="8" fill="#4e4e57"/>'
+    + '<path d="M-18 2 L-12 -10 L-6 2 Z M-2 2 L4 -14 L10 2 Z M14 2 L19 -8 L24 2 Z" fill="#3a3a44"/>'
+    + '<circle cx="-12" cy="-8" r="2" fill="#f27a3d"/><circle cx="4" cy="-12" r="2.4" fill="#f27a3d"/><circle cx="19" cy="-6" r="1.8" fill="#f27a3d"/>'
+    + '<ellipse class="steam s1" cx="-12" cy="-16" rx="3.5" ry="5" fill="#ffffff" opacity="0.45"/>'
+    + '<ellipse class="steam s2" cx="4" cy="-22" rx="4" ry="6" fill="#ffffff" opacity="0.45"/>'
+    + (t >= 2 ? '<ellipse class="steam s3" cx="19" cy="-14" rx="3" ry="5" fill="#ffffff" opacity="0.45"/>' : '')
+    + (t >= 3 ? '<circle cx="-22" cy="0" r="2.2" fill="#f2c94c"/><circle cx="26" cy="1" r="2" fill="#f2c94c"/>' : ''),
+  icebreaker: (t) => '<path d="M-30 0 Q-32 -8 -22 -8 L26 -8 L34 0 Z" fill="#c0392b"/>'
+    + '<path d="M-30 0 L34 0 L30 4 L-26 4 Z" fill="#8a1f1f"/>'
+    + '<rect x="-12" y="-20" width="24" height="12" rx="2" fill="#ffffff"/><rect x="-8" y="-17" width="5" height="4" rx="1" fill="#6fa8dc"/><rect x="2" y="-17" width="5" height="4" rx="1" fill="#6fa8dc"/>'
+    + '<rect x="6" y="-30" width="7" height="12" fill="#3b3f73"/><rect x="6" y="-30" width="7" height="3" fill="#f2c94c"/>'
+    + '<circle class="smoke" cx="9.5" cy="-35" r="3" fill="#ffffff" opacity="0.6"/>'
+    + (t >= 2 ? '<rect x="-20" y="-24" width="2" height="16" fill="#3b3f73"/><path d="M-20 -24 L-10 -20 L-20 -16 Z" fill="#e05a5a"/>' : '')
+    + (t >= 3 ? '<circle cx="18" cy="-14" r="3" fill="#f2c94c"/>' : ''),
+  auroraBeacon: (t) => '<ellipse cx="0" cy="2" rx="14" ry="5" fill="#8f7fc9"/>'
+    + '<path d="M-6 0 L-3 -40 L3 -40 L6 0 Z" fill="#d9d2ea"/>'
+    + '<path d="M-3 -40 L0 -50 L3 -40 Z" fill="#b79cf0"/>'
+    + '<path class="beam" d="M0 -46 L-30 -90 L30 -90 Z" fill="#7fe3c4" opacity="0"/>'
+    + '<circle class="window-glow" cx="0" cy="-42" r="3.5" fill="#7fe3c4" opacity="0.3"/>'
+    + (t >= 2 ? '<path d="M-10 0 L-8 -14 L-6 0 Z M6 0 L8 -14 L10 0 Z" fill="#d9d2ea"/>' : '')
+    + (t >= 3 ? '<circle cx="-12" cy="-18" r="1.5" fill="#ffffff"/><circle cx="12" cy="-24" r="1.5" fill="#ffffff"/>' : ''),
+  crystalCave: (t) => '<path d="M-24 0 Q-24 -28 0 -30 Q24 -28 24 0 Z" style="fill:var(--c-ice-shade)"/>'
+    + '<path d="M-14 0 Q-14 -18 0 -19 Q14 -18 14 0 Z" fill="#3b2f66"/>'
+    + '<path d="M-10 0 L-7 -12 L-4 0 Z M2 0 L5 -9 L8 0 Z" fill="#b79cf0"/>'
+    + '<path d="M-18 -8 L-14 -22 L-10 -8 Z M10 -10 L15 -24 L19 -8 Z" fill="#d7c8f4"/>'
+    + '<path class="window-glow" d="M-14 0 Q-14 -18 0 -19 Q14 -18 14 0 Z" fill="#b79cf0" opacity="0"/>'
+    + (t >= 2 ? '<path d="M-2 -30 L1 -40 L4 -30 Z" fill="#d7c8f4"/>' : '')
+    + (t >= 3 ? '<circle cx="-20" cy="-4" r="1.5" fill="#ffffff"/><circle cx="21" cy="-3" r="1.5" fill="#ffffff"/>' : ''),
   observatory: (t) => '<path d="M-20 0 L-20 -16 L20 -16 L20 0 Z" fill="#e9e4f5"/>'
     + '<path d="M-20 -16 Q0 -38 20 -16 Z" fill="#8f7fc9"/>'
     + '<path d="M2 -20 L10 -34 L14 -32 L6 -18 Z" fill="#3b3f73"/>'

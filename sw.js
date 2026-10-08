@@ -1,7 +1,7 @@
 // Precache-everything service worker.
 // Release ritual: bump CACHE together with APP_VERSION in js/config.js, commit,
 // push. Without the bump, browsers keep serving the previous version.
-const CACHE = 'penguinshore-v1';
+const CACHE = 'penguinshore-v2';
 
 const ASSETS = [
   './',

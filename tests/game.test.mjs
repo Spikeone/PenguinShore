@@ -72,23 +72,39 @@ test('costs follow base * growth ^ level and climb strictly', () => {
       prev = c;
     }
   }
-  assert.strictEqual(cfg.costOf(cfg.ITEM_BY_ID.adelie, 0), 10);
-  assert.strictEqual(cfg.costOfMany(cfg.ITEM_BY_ID.adelie, 0, 2), 10 + 11);
-  assert.strictEqual(cfg.affordable(cfg.ITEM_BY_ID.adelie, 0, 20), 1);
-  assert.strictEqual(cfg.affordable(cfg.ITEM_BY_ID.adelie, 0, 21), 2);
+  assert.strictEqual(cfg.costOf(cfg.ITEM_BY_ID.adelie, 0), 20);
+  assert.strictEqual(cfg.costOfMany(cfg.ITEM_BY_ID.adelie, 0, 2), 20 + 23);
+  assert.strictEqual(cfg.affordable(cfg.ITEM_BY_ID.adelie, 0, 42), 1);
+  assert.strictEqual(cfg.affordable(cfg.ITEM_BY_ID.adelie, 0, 43), 2);
 });
 
-test('the pearl formula is zero at first, monotonic, and matches the design table', () => {
-  assert.strictEqual(cfg.pearlsFor(0), 0);
-  assert.strictEqual(cfg.pearlsFor(100000), 2);
-  assert.strictEqual(cfg.pearlsFor(1000000), 7);
-  assert.strictEqual(cfg.pearlsFor(10000000), 22);
+test('the pearl formula is zero below the target, monotonic, and grows with the shore count', () => {
+  assert.strictEqual(cfg.migrateTarget(0), cfg.MIGRATE_BASE_FISH);
+  assert.strictEqual(cfg.migrateTarget(2), cfg.MIGRATE_BASE_FISH * cfg.MIGRATE_GROWTH * cfg.MIGRATE_GROWTH);
+  assert.strictEqual(cfg.pearlsFor(0, 0), 0);
+  assert.strictEqual(cfg.pearlsFor(cfg.MIGRATE_BASE_FISH - 1, 0), 0);
+  assert.strictEqual(cfg.pearlsFor(cfg.MIGRATE_BASE_FISH, 0), 4);
+  assert.strictEqual(cfg.pearlsFor(cfg.MIGRATE_BASE_FISH * 4, 0), 8);
+  assert.strictEqual(cfg.pearlsFor(cfg.migrateTarget(3), 3), 4 + 6);
   let prev = 0;
   for (let f = 0; f < 5e7; f += 123457) {
-    const p = cfg.pearlsFor(f);
+    const p = cfg.pearlsFor(f, 0);
     assert.ok(p >= prev);
     prev = p;
   }
+});
+
+test('mastery tiers and tap fatigue follow their tables', () => {
+  assert.strictEqual(cfg.masteryTier(24), 0);
+  assert.strictEqual(cfg.masteryTier(25), 1);
+  assert.strictEqual(cfg.masteryTier(99), 2);
+  assert.strictEqual(cfg.masteryTier(100), 3);
+  assert.strictEqual(cfg.nextMasteryAt(0), 25);
+  assert.strictEqual(cfg.nextMasteryAt(25), 50);
+  assert.strictEqual(cfg.fatigueMult(0), 1);
+  assert.strictEqual(cfg.fatigueMult(cfg.FATIGUE_TAPS / 2), 0.75);
+  assert.strictEqual(cfg.fatigueMult(cfg.FATIGUE_TAPS * 3), cfg.FATIGUE_FLOOR);
+  assert.strictEqual(cfg.fatigueMult(cfg.FATIGUE_TAPS, 0.8), 0.8);
 });
 
 test('the day cycle has four phases in order', () => {
@@ -132,12 +148,13 @@ test('a golden fish is worth ten taps', () => {
 
 test('the combo builds on quick taps, multiplies at its tiers, and settles slowly', () => {
   const g = newGame();
-  for (let i = 0; i < 10; i++) { g.tap(); g.tick(100); }
-  assert.strictEqual(g.state.combo, 10);
-  assert.strictEqual(cfg.comboMult(10), 1.5);
+  for (let i = 0; i < 20; i++) { g.tap(); g.tick(100); }
+  assert.strictEqual(g.state.combo, 20);
+  assert.strictEqual(cfg.comboMult(20), 1.25);
   const before = g.state.fish;
+  const fatigue = g.tapFatigue();
   g.tap();
-  assert.ok(Math.abs(g.state.fish - before - 1.5) < 1e-9, 'tap worth x1.5 at combo 10');
+  assert.ok(Math.abs(g.state.fish - before - 1.25 * fatigue) < 1e-9, 'tap worth x1.25 at combo 20');
   // past the window it settles by one per COMBO_DECAY_MS, never straight to zero
   run(g, cfg.COMBO_WINDOW_MS);
   const c = g.state.combo;
@@ -153,10 +170,46 @@ test('ice holes and krill pantry raise the tap value', () => {
   g.state.items.iceHole = 3;
   g.recompute();
   assert.strictEqual(g.fishPerTap(), 4);
-  g.state.items.adelie = 100;      // 50 fish/s
-  g.state.items.krillPantry = 5;   // tap +10% of production
+  g.state.items.adelie = 20;       // 4 fish/s, below the first mastery tier
+  g.state.items.krillPantry = 5;   // tap +5% of production
   g.recompute();
-  assert.ok(Math.abs(g.fishPerTap() - (4 + 5)) < 1e-9);
+  assert.ok(Math.abs(g.fishPerTap() - (4 + 0.2)) < 1e-9, g.fishPerTap());
+});
+
+test('tapping a lot in an hour tires the flippers, and they recover', () => {
+  const g = newGame();
+  for (let i = 0; i < cfg.FATIGUE_TAPS; i++) { g.tap(); g.tick(100); }
+  assert.ok(Math.abs(g.tapFatigue() - cfg.FATIGUE_FLOOR) < 0.02, 'floor after a busy hour: ' + g.tapFatigue());
+  run(g, 30 * 60000);
+  assert.ok(g.tapFatigue() > 0.7 && g.tapFatigue() < 0.8, 'half recovered after 30 min: ' + g.tapFatigue());
+  g.state.pearlUpgrades.steadyFlippers = 2;
+  g.recompute();
+  g.state.recentTaps = cfg.FATIGUE_TAPS * 2;
+  assert.ok(Math.abs(g.tapFatigue() - 0.7) < 1e-9, 'steady flippers raise the floor');
+});
+
+test('mastery doubles a species and golden penguins count for several', () => {
+  const g = newGame();
+  g.state.items.adelie = 24;
+  g.recompute();
+  assert.ok(Math.abs(g.fishPerSecond() - 4.8) < 1e-9);
+  g.state.items.adelie = 25;
+  g.recompute();
+  assert.ok(Math.abs(g.fishPerSecond() - 7.5) < 1e-9, 'tier 1 multiplies by 1.5: ' + g.fishPerSecond());
+  g.state.lucky.adelie = 1;
+  g.recompute();
+  assert.ok(Math.abs(g.fishPerSecond() - 8.7) < 1e-9, 'a golden one is worth five: ' + g.fishPerSecond());
+  assert.strictEqual(g.masteryTotal(), 1);
+  // buying across a tier announces it
+  give(g, 1e9);
+  const events = g.buy('adelie', 25);
+  assert.ok(events.some((e) => e.type === 'masteryUp' && e.tier === 2));
+  const lucky = createGame({ rng: constRng(0.0) });
+  lucky.loadState(null);
+  give(lucky, 1000);
+  const ev = lucky.buy('adelie', 3);
+  assert.ok(ev.some((e) => e.type === 'lucky' && e.count === 3), 'a 0 roll is always lucky');
+  assert.strictEqual(lucky.state.luckyFound, 3);
 });
 
 // ---------------------------------------------------------------- buying
@@ -165,7 +218,7 @@ test('buying needs the fish and the unlock', () => {
   const g = newGame();
   assert.deepStrictEqual(g.buy('adelie'), []);
   assert.strictEqual(g.state.items.adelie, 0);
-  give(g, 10);
+  give(g, 20);
   const events = g.buy('adelie');
   assert.strictEqual(g.state.items.adelie, 1);
   assert.strictEqual(g.state.fish, 0);
@@ -191,7 +244,7 @@ test('x10 and max buy as many as fit and respect the cap', () => {
   const g2 = newGame();
   give(g2, 25);
   g2.buy('adelie', 10);
-  assert.strictEqual(g2.state.items.adelie, 2, 'only two fit in 25 fish');
+  assert.strictEqual(g2.state.items.adelie, 1, 'only one fits in 25 fish');
 });
 
 // ---------------------------------------------------------------- the clock
@@ -200,26 +253,27 @@ test('production credits exactly the elapsed time and never a catch-up', () => {
   const g = newGame();
   assert.deepStrictEqual(g.tick(1000), []);
   assert.strictEqual(g.state.fish, 0);
-  g.state.items.adelie = 2;   // 1 fish/s
+  g.state.items.adelie = 4;   // 0.8 fish/s (five would trigger a milestone burst)
   g.recompute();
   g.tick(1000 / 4); g.tick(1000 / 4); g.tick(1000 / 4); g.tick(1000 / 4);
-  assert.ok(Math.abs(g.state.fish - 1) < 1e-9);
+  assert.ok(Math.abs(g.state.fish - 0.8) < 1e-9, g.state.fish);
   const before = g.state.fish;
   g.tick(60000);
-  assert.ok(Math.abs(g.state.fish - before - cfg.MAX_TICK_MS / 1000) < 1e-9, 'a minute away pays a quarter second');
+  assert.ok(Math.abs(g.state.fish - before - 0.8 * cfg.MAX_TICK_MS / 1000) < 1e-9, 'a minute away pays a quarter second');
   assert.deepStrictEqual(g.tick(0), []);
   assert.deepStrictEqual(g.tick(-5), []);
 });
 
 test('multipliers and the biome bonus compound on production', () => {
   const g = newGame();
-  g.state.items.adelie = 2;      // 1/s
+  g.state.items.adelie = 5;      // 1/s
   g.state.items.igloo = 2;       // +50%
   g.state.items.snowNest = 1;    // +10%
+  g.state.items.hotVents = 1;    // +100%
   g.state.pearlUpgrades.warmFeathers = 1; // +15%
   g.state.biome = 1;             // +25%
   g.recompute();
-  const expected = 1 * (1 + 0.5 + 0.1) * 1.15 * 1.25;
+  const expected = 1 * (1 + 0.5 + 0.1 + 1) * 1.15 * 1.25;
   assert.ok(Math.abs(g.fishPerSecond() - expected) < 1e-9, g.fishPerSecond() + ' vs ' + expected);
 });
 
@@ -243,7 +297,7 @@ test('milestones fire once with their rewards', () => {
   const ms = events.filter((e) => e.type === 'milestone').map((e) => e.id);
   assert.ok(ms.includes('crowdOfFive'));
   assert.ok(g.state.fish > 1e6 - cfg.costOfMany(cfg.ITEM_BY_ID.adelie, 0, 5), 'burst credited');
-  for (let i = 0; i < 10; i++) { g.tap(); g.tick(50); }
+  for (let i = 0; i < 20; i++) { g.tap(); g.tick(50); }
   assert.ok(g.state.seen.milestones.includes('rhythm'));
   assert.ok(g.state.unlockedCosmetics.includes('scarfRed'));
   assert.ok(Object.values(g.state.cosmetics).includes('scarfRed'), 'worn by someone');
@@ -362,14 +416,16 @@ test('migration keeps pearls and cosmetics, resets the colony, moves on', () => 
   g.state.cosmetics['adelie#0'] = 'crown';
   assert.ok(!g.canMigrate());
   assert.deepStrictEqual(g.migrate(), []);
-  g.state.lifetimeFish = 1000000;
+  g.state.lifetimeFish = cfg.MIGRATE_BASE_FISH * 4;
   assert.ok(g.canMigrate());
-  assert.strictEqual(g.pearlsOnMigrate(), 7);
+  assert.strictEqual(g.pearlsOnMigrate(), 8);
   const total = g.state.totalFish;
   const events = g.migrate();
   assert.ok(types(events).includes('migrated'));
-  assert.strictEqual(g.state.pearls, 7);
-  assert.strictEqual(g.state.pearlsEarned, 7);
+  assert.strictEqual(g.state.pearls, 8);
+  assert.strictEqual(g.state.pearlsEarned, 8);
+  assert.strictEqual(g.migrateGoal(), cfg.migrateTarget(1), 'the next shore asks for more');
+  assert.deepStrictEqual(g.state.seen.biomes, [0, 1]);
   assert.strictEqual(g.state.items.adelie, 0);
   assert.strictEqual(g.state.fish, 0);
   assert.strictEqual(g.state.lifetimeFish, 0);
@@ -387,19 +443,20 @@ test('pearl upgrades cost pearls and head start applies to the next colony', () 
   g.state.pearls = 10;
   g.buyPearl('deepDiver');
   assert.strictEqual(g.state.pearls, 9);
-  assert.strictEqual(g.fishPerTap(), 2);
+  assert.strictEqual(g.fishPerTap(), 1.25);
   g.buyPearl('headStart');
   assert.strictEqual(g.state.pearls, 6);
-  g.state.lifetimeFish = cfg.MIGRATE_MIN_FISH;
+  g.state.lifetimeFish = cfg.MIGRATE_BASE_FISH;
   g.migrate();
   assert.strictEqual(g.state.items.adelie, cfg.HEAD_START_ADELIES);
-  assert.strictEqual(g.state.fish, cfg.HEAD_START_FISH);
+  assert.strictEqual(g.state.fish, cfg.headStartFish(1));
+  assert.strictEqual(cfg.headStartFish(3), 10000);
   assert.strictEqual(g.state.pearlUpgrades.deepDiver, 1);
   // pearl diver adds flat pearls
   g.state.pearls = 100;
   g.buyPearl('pearlDiver');
-  g.state.lifetimeFish = cfg.MIGRATE_MIN_FISH;
-  assert.strictEqual(g.pearlsOnMigrate(), 2 + 1);
+  g.state.lifetimeFish = cfg.migrateTarget(1);
+  assert.strictEqual(g.pearlsOnMigrate(), 4 + 2 + 1);
 });
 
 // ---------------------------------------------------------------- saves
@@ -418,7 +475,8 @@ test('a snapshot round-trips and junk is cleaned up', () => {
   back.comboDecayAcc = snap.comboDecayAcc;
   assert.deepStrictEqual(back, snap);
 
-  const dirty = normalizeSave({ fish: -5, items: { adelie: 2.7, bogus: 9, iceHole: 999 }, seen: { species: ['dragon'] }, pearls: 'x' });
+  const dirty = normalizeSave({ fish: -5, items: { adelie: 2.7, bogus: 9, iceHole: 999 }, lucky: { adelie: 9 }, seen: { species: ['dragon'] }, pearls: 'x' });
+  assert.strictEqual(dirty.lucky.adelie, 2, 'never more golden than owned');
   assert.strictEqual(dirty.fish, 0);
   assert.strictEqual(dirty.items.adelie, 2);
   assert.strictEqual(dirty.items.iceHole, cfg.ITEM_BY_ID.iceHole.max);
@@ -430,6 +488,11 @@ test('a snapshot round-trips and junk is cleaned up', () => {
   const old = normalizeSave({ fish: 12, items: { adelie: 1 } });
   assert.strictEqual(old.v, SAVE_VERSION);
   assert.strictEqual(old.fish, 12);
+  const v1 = normalizeSave({ v: 1, fish: 7, items: { adelie: 4 }, pearls: 2, migrations: 1, biome: 1 });
+  assert.strictEqual(v1.v, SAVE_VERSION);
+  assert.strictEqual(v1.items.adelie, 4);
+  assert.strictEqual(v1.recentTaps, 0);
+  assert.deepStrictEqual(v1.seen.biomes, [0, 1]);
 });
 
 test('visible counts cap each species and the whole floe', () => {

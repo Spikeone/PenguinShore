@@ -92,6 +92,30 @@
   animation-delay: calc(var(--d) * -1);
 }
 #scene[data-weather="petals"] .flake { fill: #f7a8c4; }
+@keyframes rise-ember {
+  0% { transform: translate(0, 0); opacity: 0; }
+  10% { opacity: 0.9; }
+  100% { transform: translate(var(--x), -200px); opacity: 0; }
+}
+#scene[data-weather="embers"] .flake {
+  fill: #f2a24a;
+  animation: rise-ember var(--t) linear infinite;
+  animation-delay: calc(var(--d) * -1);
+  transform-origin: center;
+}
+#scene[data-weather="embers"] #weather { transform: translateY(230px); }
+@keyframes sparkle-pop {
+  0%, 100% { opacity: 0; transform: scale(0.4); }
+  50% { opacity: 0.9; transform: scale(1.2); }
+}
+#scene[data-weather="sparkle"] .flake {
+  animation: sparkle-pop 3s ease-in-out infinite;
+  animation-delay: calc(var(--d) * -1);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+#scene[data-weather="sparkle"] #weather { transform: translateY(120px); }
+#scene .penguin.golden .sparkle { animation: twinkle 1.6s ease-in-out infinite; }
 
 /* ---------------- buildings ---------------- */
 @keyframes ripple {

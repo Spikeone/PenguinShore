@@ -1,17 +1,20 @@
 // All DOM except the SVG scene (scene.js) and transient effects (fx.js):
-// the HUD, the shop, overlays, settings, and input wiring.
+// the HUD, the shop, overlays, settings, the collection, and input wiring.
 
 import {
-  ITEMS, ITEM_BY_ID, SPECIES, PEARL_UPGRADES, BUY_QUANTITIES, MILESTONES, COSMETIC_BY_ID,
-  costOfMany, comboMult, comboTier, biomeAt, pearlsFor, MIGRATE_MIN_FISH, PEARL_DIVISOR,
+  ITEMS, ITEM_BY_ID, SPECIES, SPECIES_ORDER, PEARL_UPGRADES, MILESTONES, COSMETICS, COSMETIC_BY_ID,
+  BIOMES, EVENTS,
+  costOfMany, comboMult, comboTier, biomeAt, biomeLap, pearlsFor, migrateTarget,
+  masteryTier, nextMasteryAt, MASTERY_TIERS,
   LABELS, label, APP_VERSION, COMBO_WINDOW_MS,
 } from './config.js';
 import { fmt, fmtRate, fmtTime } from './format.js';
 import { buildingSvg } from './penguin.js';
+import { colonySizeOf, masteryTotal } from './game.js';
 import * as scene from './scene.js';
 
 const $ = (id) => document.getElementById(id);
-const OVERLAYS = ['overlay-settings', 'overlay-migrate'];
+const OVERLAYS = ['overlay-settings', 'overlay-migrate', 'overlay-collection'];
 
 export function createUi(cb) {
   const els = {
@@ -21,6 +24,7 @@ export function createUi(cb) {
     combo: $('combo'),
     comboText: $('combo-text'),
     comboFill: $('combo-fill'),
+    tapChip: $('tap-chip'),
     pearlPill: $('pearl-pill'),
     pearlCount: $('pearl-count'),
     boosts: $('boost-pills'),
@@ -38,7 +42,8 @@ export function createUi(cb) {
 
   let tab = 'colony';
   let qty = 1;
-  let cards = new Map();     // id -> { root, cost, eta, owned, lockText }
+  let cards = new Map();     // id -> card
+  let goals = null;          // { root, rows: [{ id, fill, text }] }
   let shopSignature = '';
 
   // ---------------- overlays ----------------
@@ -57,6 +62,7 @@ export function createUi(cb) {
   // ---------------- HUD ----------------
   let lastFishText = '';
   let lastRateText = '';
+  let lastChipText = '';
   function renderHud(game) {
     const s = game.state;
     const fishText = fmt(s.fish);
@@ -71,8 +77,16 @@ export function createUi(cb) {
       els.comboText.textContent = tier ? '×' + comboMult(s.combo) : s.combo;
       els.combo.classList.toggle('tiered', !!tier);
       els.combo.classList.toggle('hot', s.sinceTapMs <= COMBO_WINDOW_MS);
-      const next = tier && tier.at === 50 ? 50 : (s.combo < 10 ? 10 : (s.combo < 25 ? 25 : 50));
+      const next = s.combo < 20 ? 20 : (s.combo < 50 ? 50 : 100);
       els.comboFill.style.width = Math.min(100, (s.combo / next) * 100) + '%';
+    }
+    // tired flippers
+    const fatigue = game.tapFatigue();
+    const chip = fatigue < 0.985 ? label('tired', { n: Math.round(fatigue * 100) }) : '';
+    if (chip !== lastChipText) {
+      lastChipText = chip;
+      els.tapChip.textContent = chip;
+      els.tapChip.classList.toggle('hidden', !chip);
     }
     els.pearlCount.textContent = fmt(s.pearls);
     els.pearlPill.classList.toggle('ready', game.canMigrate());
@@ -97,6 +111,69 @@ export function createUi(cb) {
     }
   }
 
+  // ---------------- goals ----------------
+  // Progress of a milestone condition, 0..1, or null when it is not a number.
+  function goalProgress(m, game) {
+    const s = game.state;
+    const c = m.cond;
+    const frac = (have, need) => Math.max(0, Math.min(1, have / need));
+    switch (c.type) {
+      case 'taps': return { f: frac(s.taps, c.value), text: fmt(s.taps) + ' / ' + fmt(c.value) };
+      case 'sessionTaps': return { f: frac(s.sessionTaps, c.value), text: fmt(s.sessionTaps) + ' / ' + fmt(c.value) };
+      case 'penguins': return { f: frac(game.colonySize(), c.value), text: fmt(game.colonySize()) + ' / ' + fmt(c.value) };
+      case 'lifetimeFish': return { f: frac(s.lifetimeFish, c.value), text: fmt(s.lifetimeFish) + ' / ' + fmt(c.value) };
+      case 'totalFish': return { f: frac(s.totalFish, c.value), text: fmt(s.totalFish) + ' / ' + fmt(c.value) };
+      case 'combo': return { f: frac(s.bestCombo, c.value), text: s.bestCombo + ' / ' + c.value };
+      case 'counter': return { f: frac(s.counters[c.value.key] || 0, c.value.n), text: (s.counters[c.value.key] || 0) + ' / ' + c.value.n };
+      case 'migrations': return { f: frac(s.migrations, c.value), text: s.migrations + ' / ' + c.value };
+      case 'lucky': return { f: frac(s.luckyFound, c.value), text: s.luckyFound + ' / ' + c.value };
+      case 'mastery': return { f: frac(game.masteryTotal(), c.value), text: game.masteryTotal() + ' / ' + c.value };
+      case 'item': return { f: 0, text: '' };
+      default: return { f: 0, text: '' };
+    }
+  }
+
+  // The three closest unmet goals, nearest first. Goals that cannot start yet
+  // (a species not unlocked, a shore not reached) stay out of the list.
+  function nextGoals(game) {
+    const s = game.state;
+    const open = MILESTONES.filter((m) => !s.seen.milestones.includes(m.id)).filter((m) => {
+      if (m.cond.type === 'item') return game.isUnlocked(m.cond.value);
+      if (m.cond.type === 'counter' && m.cond.value.key === 'egg') return s.items.snowNest > 0;
+      return true;
+    });
+    const scored = open.map((m) => ({ m, p: goalProgress(m, game) }));
+    scored.sort((a, b) => b.p.f - a.p.f || MILESTONES.indexOf(a.m) - MILESTONES.indexOf(b.m));
+    return scored.slice(0, 3);
+  }
+
+  function buildGoalsCard(game) {
+    const root = document.createElement('div');
+    root.className = 'goals-card';
+    root.innerHTML = '<div class="gc-title">' + LABELS.goalsTitle + '</div>';
+    const rows = [];
+    for (const g of nextGoals(game)) {
+      const row = document.createElement('div');
+      row.className = 'goal';
+      row.innerHTML = '<div class="g-head"><span class="g-name">' + g.m.name + '</span><span class="g-text"></span></div>'
+        + '<div class="g-desc">' + g.m.desc + '</div>'
+        + '<div class="g-bar"><div class="g-fill"></div></div>';
+      root.appendChild(row);
+      rows.push({ m: g.m, fill: row.querySelector('.g-fill'), text: row.querySelector('.g-text') });
+    }
+    goals = { root, rows };
+    return root;
+  }
+
+  function updateGoals(game) {
+    if (!goals) return;
+    for (const r of goals.rows) {
+      const p = goalProgress(r.m, game);
+      r.fill.style.width = (p.f * 100).toFixed(1) + '%';
+      if (r.text.textContent !== p.text) r.text.textContent = p.text;
+    }
+  }
+
   // ---------------- shop ----------------
   // Each building is a different shape; frame it so it fills its thumbnail.
   const THUMB_BOX = {
@@ -107,6 +184,12 @@ export function createUi(cb) {
     lighthouse: '-26 -60 52 68',
     hotSpring: '-30 -28 60 40',
     observatory: '-32 -44 64 50',
+    tidePools: '-30 -18 60 28',
+    lanternDock: '-12 -44 56 52',
+    hotVents: '-30 -30 60 40',
+    icebreaker: '-36 -42 72 52',
+    auroraBeacon: '-20 -56 40 64',
+    crystalCave: '-28 -44 56 52',
   };
   const thumbFor = (it) => {
     if (it.kind === 'penguin') {
@@ -122,7 +205,12 @@ export function createUi(cb) {
     if (it.prodMult) return label('prodMult', { n: Math.round(it.prodMult * 100) });
     if (it.krill) return label('krill', { n: Math.round(it.krill * 100) });
     if (it.swarmFreq) return label('swarmBonus', { n: Math.round(it.swarmFreq * 100), s: it.swarmWindowMs / 1000 });
-    if (it.comboSlow) return label('hotSpring', { n: Math.round(it.comboSlow * 100), g: Math.round(it.golden * 100) });
+    if (it.comboSlow) return label('hotSpring', { n: Math.round(it.comboSlow * 100), g: (it.golden * 100).toFixed(1).replace(/\.0$/, '') });
+    if (it.tapMult) return label('tidePools', { n: Math.round(it.tapMult * 100), g: Math.round(it.golden * 100) });
+    if (it.burstMult) return label('burstMult', { n: Math.round(it.burstMult * 100) });
+    if (it.perPenguin) return label('perPenguin', { n: Math.round(it.perPenguin * 1000) });
+    if (it.nightMult) return label('nightMult', { n: Math.round(it.nightMult * 100) });
+    if (it.masteryBonus) return label('masteryBonus', { n: Math.round(it.masteryBonus * 100) });
     return '';
   };
 
@@ -136,9 +224,23 @@ export function createUi(cb) {
     return '';
   }
 
+  const stars = (n) => '★'.repeat(n);
+
+  function masteryText(it, game) {
+    const owned = game.state.items[it.id] || 0;
+    const tier = masteryTier(owned);
+    const next = nextMasteryAt(owned);
+    const parts = [];
+    if (tier > 0) parts.push(label('mastery', { stars: stars(tier) }));
+    parts.push(next ? label('masteryNext', { n: next }) : LABELS.masteryMax);
+    const lucky = game.state.lucky[it.id] || 0;
+    if (lucky) parts.push(label('luckyOwned', { n: lucky }));
+    return parts.join(' · ');
+  }
+
   // Which cards a tab shows: everything unlocked, plus the next two locked
   // ones so there is always something to look forward to. Items that need a
-  // later biome stay hidden until then.
+  // later shore stay hidden until then.
   function itemsForTab(game) {
     const kind = tab === 'colony' ? 'penguin' : 'building';
     const out = [];
@@ -154,12 +256,13 @@ export function createUi(cb) {
 
   function buildItemCard(it, game) {
     const root = document.createElement('button');
-    root.className = 'shop-item';
+    root.className = 'shop-item' + (it.kind === 'penguin' ? ' penguin-item' : '');
     root.dataset.id = it.id;
     root.innerHTML = thumbFor(it)
       + '<div class="info"><div class="name">' + it.name + ' <span class="owned"></span></div>'
       + '<div class="effect">' + effectText(it) + '</div>'
       + '<div class="flavour">' + it.flavour + '</div>'
+      + (it.kind === 'penguin' ? '<div class="mastery"></div>' : '')
       + '<div class="lock"></div></div>'
       + '<div class="price"><span class="cost"></span><span class="eta"></span></div>';
     root.addEventListener('click', () => cb.onBuy(it.id, qty));
@@ -169,6 +272,7 @@ export function createUi(cb) {
       cost: root.querySelector('.cost'),
       eta: root.querySelector('.eta'),
       lock: root.querySelector('.lock'),
+      mastery: root.querySelector('.mastery'),
       item: it,
     };
   }
@@ -185,53 +289,60 @@ export function createUi(cb) {
     return { root, owned: root.querySelector('.owned'), cost: root.querySelector('.cost'), pearl: def };
   }
 
+  function biomeTitle(index) {
+    const lap = biomeLap(index);
+    return biomeAt(index).name + (lap > 0 ? ' (' + label('lap', { n: lap + 1 }) + ')' : '');
+  }
+
   function buildMigrateCard(game) {
     const root = document.createElement('div');
     root.className = 'migrate-card';
     const s = game.state;
-    const biome = biomeAt(s.biome);
-    const next = biomeAt(s.biome + 1);
+    const next = s.biome + 1;
+    const target = game.migrateGoal();
     if (game.canMigrate()) {
       const n = game.pearlsOnMigrate();
-      const base = pearlsFor(s.lifetimeFish);
-      const nextTarget = Math.pow(base + 1, 2) * PEARL_DIVISOR;
+      const base = pearlsFor(s.lifetimeFish, s.migrations);
+      // the fish needed for one more base pearl
+      const nextTarget = Math.pow((base - 2 * s.migrations + 1) / 4, 2) * target;
       root.innerHTML = '<div class="mc-title">' + LABELS.migrateTitle + '</div>'
         + '<div class="mc-desc">' + label('migrateReady', { n, next: fmt(nextTarget), more: n + 1 }) + '</div>'
-        + '<div class="mc-next">' + label('newBiome', { name: next.name }) + ' · ' + next.tagline + '</div>'
+        + '<div class="mc-next">' + label('newBiome', { name: biomeTitle(next) }) + ' · ' + biomeAt(next).tagline + '</div>'
         + '<button class="big-btn primary" id="btn-migrate">' + LABELS.migrateButton + '</button>';
       root.querySelector('#btn-migrate').addEventListener('click', () => cb.onMigrateOpen());
     } else {
-      const frac = Math.min(1, s.lifetimeFish / MIGRATE_MIN_FISH);
-      root.innerHTML = '<div class="mc-title">' + LABELS.migrateLockedTitle + ' · ' + biome.name + '</div>'
-        + '<div class="mc-desc">' + label('migrateLockedDesc', { n: fmt(MIGRATE_MIN_FISH) }) + '</div>'
+      const frac = Math.min(1, s.lifetimeFish / target);
+      root.innerHTML = '<div class="mc-title">' + LABELS.migrateLockedTitle + ' · ' + biomeTitle(s.biome) + '</div>'
+        + '<div class="mc-desc">' + label('migrateLockedDesc', { n: fmt(target) }) + '</div>'
         + '<div class="mc-bar"><div class="mc-fill" style="width:' + (frac * 100).toFixed(1) + '%"></div></div>'
-        + '<div class="mc-progress">' + fmt(s.lifetimeFish) + ' / ' + fmt(MIGRATE_MIN_FISH) + '</div>';
+        + '<div class="mc-progress">' + fmt(s.lifetimeFish) + ' / ' + fmt(target) + '</div>';
     }
     return root;
   }
 
   function renderShop(game) {
     const list = tab === 'pearls' ? [] : itemsForTab(game);
+    const goalIds = tab === 'colony' ? nextGoals(game).map((g) => g.m.id).join('+') : '';
     const sig = tab + ':' + list.map((it) => it.id + (game.isUnlocked(it.id) ? '+' : '-')).join(',')
-      + ':' + (game.canMigrate() ? 'M' : 'm') + ':' + game.state.biome + ':' + qty;
+      + ':' + (game.canMigrate() ? 'M' : 'm') + ':' + game.state.biome + ':' + qty + ':' + goalIds;
     if (sig === shopSignature) { updateShop(game); return; }
     shopSignature = sig;
     els.shop.innerHTML = '';
     cards = new Map();
+    goals = null;
     if (tab === 'pearls') {
       els.shop.appendChild(buildMigrateCard(game));
-      if (game.state.migrations === 0 && game.state.pearls === 0) {
-        const note = document.createElement('p');
-        note.className = 'shop-note';
-        note.textContent = LABELS.pearlsLocked;
-        els.shop.appendChild(note);
-      }
+      const note = document.createElement('p');
+      note.className = 'shop-note';
+      note.textContent = LABELS.pearlsHow;
+      els.shop.appendChild(note);
       for (const def of PEARL_UPGRADES) {
         const card = buildPearlCard(def);
         cards.set(def.id, card);
         els.shop.appendChild(card.root);
       }
     } else {
+      if (tab === 'colony') els.shop.appendChild(buildGoalsCard(game));
       for (const it of list) {
         const card = buildItemCard(it, game);
         cards.set(it.id, card);
@@ -245,6 +356,7 @@ export function createUi(cb) {
   function updateShop(game) {
     const s = game.state;
     const fps = game.fishPerSecond();
+    updateGoals(game);
     for (const card of cards.values()) {
       if (card.pearl) {
         const def = card.pearl;
@@ -264,6 +376,10 @@ export function createUi(cb) {
       card.root.classList.toggle('locked', !unlocked);
       const ownedText = level ? '×' + level : '';
       if (card.owned.textContent !== ownedText) card.owned.textContent = ownedText;
+      if (card.mastery) {
+        const mt = unlocked && level > 0 ? masteryText(it, game) : '';
+        if (card.mastery.textContent !== mt) card.mastery.textContent = mt;
+      }
       const maxed = it.max && level >= it.max;
       card.root.classList.toggle('maxed', !!maxed);
       if (maxed) {
@@ -295,9 +411,8 @@ export function createUi(cb) {
   // ---------------- overlays' content ----------------
   function renderMigrate(game) {
     const s = game.state;
-    const next = biomeAt(s.biome + 1);
     els.migrateTitle.textContent = LABELS.migrateConfirmTitle;
-    els.migrateDesc.textContent = label('migrateConfirmDesc', { biome: next.name, n: game.pearlsOnMigrate() });
+    els.migrateDesc.textContent = label('migrateConfirmDesc', { biome: biomeTitle(s.biome + 1), n: game.pearlsOnMigrate() });
   }
 
   function renderSettings(settings, game) {
@@ -308,20 +423,55 @@ export function createUi(cb) {
     $('set-reset-pearls').checked = false;
     const s = game.state;
     const rows = [
-      [LABELS.statBiome, biomeAt(s.biome).name],
+      [LABELS.statBiome, biomeTitle(s.biome)],
       [LABELS.statFish, fmt(s.lifetimeFish)],
       [LABELS.statAllFish, fmt(s.totalFish)],
       [LABELS.statTaps, fmt(s.taps)],
       [LABELS.statMigrations, String(s.migrations)],
+      [LABELS.statPearlsEarned, String(s.pearlsEarned)],
+      [LABELS.statLucky, String(s.luckyFound)],
+      [LABELS.statMastery, String(game.masteryTotal())],
     ];
     els.statsGrid.innerHTML = rows.map((r) => '<div class="k">' + r[0] + '</div><div class="v">' + r[1] + '</div>').join('');
+    els.version.textContent = label('version', { n: APP_VERSION });
+  }
+
+  function renderCollection(game) {
+    const s = game.state;
+    // species: seen ones with their current count, mastery and golden count
+    $('col-species').innerHTML = SPECIES_ORDER.map((sp) => {
+      const item = ITEMS.find((it) => it.species === sp);
+      const seen = s.seen.species.includes(sp);
+      const owned = s.items[item.id] || 0;
+      const tier = masteryTier(owned);
+      const lucky = s.lucky[item.id] || 0;
+      return '<div class="col-cell ' + (seen ? 'seen' : '') + '">'
+        + '<svg viewBox="-24 -62 48 66" aria-hidden="true"><use href="#sp-' + sp + (lucky ? '-gold' : '') + '"/></svg>'
+        + '<div class="col-name">' + (seen ? SPECIES[sp].name : LABELS.unknown) + '</div>'
+        + '<div class="col-sub">' + (seen ? (owned ? '×' + owned + ' ' + stars(tier) : '') : '') + '</div>'
+        + '</div>';
+    }).join('');
+    $('col-cosmetics').innerHTML = COSMETICS.map((c) => {
+      const have = s.unlockedCosmetics.includes(c.id);
+      return '<div class="col-cell small ' + (have ? 'seen' : '') + '">'
+        + '<svg viewBox="-24 -70 48 74" aria-hidden="true"><use href="#sp-adelie"/>' + (have ? '<use href="#acc-' + c.id + '"/>' : '') + '</svg>'
+        + '<div class="col-name">' + (have ? c.name : LABELS.unknown) + '</div></div>';
+    }).join('');
+    $('col-shores').innerHTML = BIOMES.map((b, i) => {
+      const seen = s.seen.biomes.some((idx) => idx % BIOMES.length === i);
+      return '<div class="col-shore ' + (seen ? 'seen' : '') + '" style="--a:' + b.day.skyTop + ';--b:' + b.day.water + ';--c:' + b.day.ice + '">'
+        + '<div class="col-swatch"></div><div class="col-name">' + (seen ? b.name : LABELS.unknown) + '</div></div>';
+    }).join('');
+    $('col-visitors').innerHTML = EVENTS.map((e) => {
+      const n = s.counters[e.id] || 0;
+      return '<div class="col-visitor ' + (n ? 'seen' : '') + '"><span>' + (n ? e.name : LABELS.unknown) + '</span><span class="col-count">' + (n ? '×' + n : '') + '</span></div>';
+    }).join('');
     els.milestoneCount.textContent = s.seen.milestones.length + ' / ' + MILESTONES.length;
     els.milestoneList.innerHTML = MILESTONES.map((m) => {
       const done = s.seen.milestones.includes(m.id);
-      return '<div class="ms ' + (done ? 'done' : '') + '"><span class="ms-name">' + (done ? m.name : '???') + '</span>'
+      return '<div class="ms ' + (done ? 'done' : '') + '"><span class="ms-name">' + (done ? m.name : LABELS.unknown) + '</span>'
         + '<span class="ms-desc">' + m.desc + '</span></div>';
     }).join('');
-    els.version.textContent = label('version', { n: APP_VERSION });
   }
 
   // ---------------- input ----------------
@@ -356,6 +506,7 @@ export function createUi(cb) {
     for (const q of els.qtys) q.addEventListener('click', () => cb.onQty(q.dataset.qty === 'max' ? 'max' : Number(q.dataset.qty)));
     els.pearlPill.addEventListener('click', () => cb.onTab('pearls'));
     $('btn-settings').addEventListener('click', () => cb.onOpenSettings());
+    $('btn-collection').addEventListener('click', () => cb.onOpenCollection());
     document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => cb.onCloseOverlay()));
     $('btn-migrate-go').addEventListener('click', () => cb.onMigrateConfirm());
 
@@ -372,7 +523,8 @@ export function createUi(cb) {
 
   return {
     renderHud, renderBoosts, renderShop, updateShop, setTab, setQty,
-    showOverlay, hideOverlays, isOverlayOpen, renderMigrate, renderSettings,
+    showOverlay, hideOverlays, isOverlayOpen, renderMigrate, renderSettings, renderCollection,
+    biomeTitle,
     get tab() { return tab; },
     get qty() { return qty; },
   };
